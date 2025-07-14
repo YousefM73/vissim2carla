@@ -143,14 +143,8 @@ class VissimVehicle(object):
 
 
 class PTVVissimSimulation(object):
-    """
-    PTVVissimSimulation is responsible for the management of the vissim simulation.
-    """
     def __init__(self, args):
-        # Maximum number of simulator vehicles to be tracked by the driving simulator interface.
-        self._max_simulator_vehicles = args.simulator_vehicles
         
-        # Connection to vissim simulator.
         logging.info('Establishing a connection with a GUI version of PTV-Vissim')
         self.proxy = com.gencache.EnsureDispatch("Vissim.Vissim")
         folder = os.path.dirname(os.path.dirname(__file__))
@@ -163,72 +157,12 @@ class PTVVissimSimulation(object):
 
         self.proxy.LoadNet(network_file, False)
 
-        # Structures to keep track of the simulation state at each time step.
-        self._vissim_vehicles = {}  # vissim_actor_id: VissimVehicle (only vissim traffic)
-        self._simulator_vehicles = {}  # vissim_actor_id: Simulator_Veh_Data
-
-        self.spawned_vehicles = set()
-        self.destroyed_vehicles = set()
-        self.lights_state = {}
-        self._first_vehicle_spawned = 0  # Track if first vehicle has been set with tracking attribute
+        self.vehicles = {}
 
     def get_actor(self, actor_id):
-        """
-        Accessor for vissim actor.
-        """
-        return self._vissim_vehicles[actor_id]
-
-    def spawn_actor(self, transform):
-        """
-        Spawns a new actor.
-
-        Warning: When the maximum number of simulator vehicles being tracked at the same time is
-        reached, no new vehicles are spawned.
-        """
-        # Checks number of simulator vehicles currently being tracked.
-        if (len(self._simulator_vehicles) < self._max_simulator_vehicles):
-            actor_id = self._get_next_actor_id()
-            self._simulator_vehicles[actor_id] = Simulator_Veh_Data(
-                transform.location.x, transform.location.y, transform.location.z,
-                math.radians(transform.rotation.yaw), math.radians(transform.rotation.pitch), 0.0,
-                False, 0, 0)
-            return actor_id
-        else:
-            logging.warning(
-                'Maximum number of simulator vehicles reached. No vehicle will be spawned.')
-            return constants.INVALID_ACTOR_ID
-
-    def destroy_actor(self, actor_id):
-        """
-        Destroys the given actor.
-
-            :param actor_id: id of the vehicle to be destroyed.
-            :return: True if successfully destroyed. Otherwise, False.
-        """
-        if actor_id in self._simulator_vehicles:
-            del self._simulator_vehicles[actor_id]
-            return True
-        return False
-
-    def synchronize_vehicle(self, vehicle_id, transform, velocity):
-        """
-        Updates vehicle state.
-
-            :param int vehicle_id: id of the vehicle to be updated.
-            :param carla.Transform transform: new vehicle transform (i.e., position and rotation).
-            :param carla.Vector3D velocity: new vehicle velocity.
-            :return: True if successfully updated. Otherwise, False.
-        """
-        self._simulator_vehicles[vehicle_id] = Simulator_Veh_Data(
-            transform.location.x, transform.location.y, transform.location.z,
-            math.radians(transform.rotation.yaw), math.radians(transform.rotation.pitch),
-            math.sqrt(velocity.x**2 + velocity.y**2 + velocity.z**2), False, 0, 0)
-        return True
+        return self.vehicles[actor_id]
 
     def tick(self):
-        """
-        Tick to vissim simulation.
-        """ 
         self.proxy.Simulation.RunSingleStep()
 
         vehicles = {}
@@ -257,30 +191,15 @@ class PTVVissimSimulation(object):
                 [pitch, yaw, 0], veh.AttValue('Speed'),
                 veh.AttValue("Indicating"))
 
+        self.vehicles = vehicles
+        
         for signal_controller in self.proxy.Net.SignalControllers:
             for signal_group in signal_controller.SGs:
                 state = signal_group.AttValue('SigState')
                 name = signal_group.AttValue('Name')
                 for carla_light in name.split(','):
-                    self.lights_state[carla_light] = SignalState(state)
-        
-        active_vehicles = set(self._vissim_vehicles.keys())
-        current_vehicles = set(vehicles.keys())
-
-        self.spawned_vehicles = current_vehicles.difference(active_vehicles)
-        self.destroyed_vehicles = active_vehicles.difference(current_vehicles)
-
-        if self._first_vehicle_spawned == 0 and self.spawned_vehicles:
-            first_vehicle_id = min(self.spawned_vehicles)
-            try:
-                self._first_vehicle_spawned = first_vehicle_id
-                logging.info(f'Begun tracking vehicle: {first_vehicle_id}')
-            except Exception as e:
-                logging.error(f'Failed to track vehicle {first_vehicle_id}: {e}')
-
-        
-
-        self._vissim_vehicles = vehicles
+                    return
+                    #self.lights_state[carla_light] = SignalState(state)
 
     def close(self):
         return

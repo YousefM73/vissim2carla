@@ -60,9 +60,8 @@ class SimulationSynchronization(object):
         self.vissim = vissim_simulation
         self.carla = carla_simulation
 
-        # Mapped actor ids.
-        self.vissim2carla_ids = {}  # Contains only actors controlled by vissim.
         self.carla2vissim_ids = {}  # Contains only actors controlled by carla.
+        self.vissim2carla_ids = {}  # Contains only actors controlled by vissim.
 
         BridgeHelper.blueprint_library = self.carla.world.get_blueprint_library()
         dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -76,85 +75,51 @@ class SimulationSynchronization(object):
         self.carla.world.apply_settings(settings)
         
     def tick(self):
-        """
-        Tick to simulation synchronization
-        """
         # -------------------
         # vissim-->carla sync
         # -------------------
         self.vissim.tick()
+        self.carla.world.tick()
 
         # Spawning vissim controlled vehicles in carla.
-        vissim_spawned_actors = self.vissim.spawned_vehicles - set(self.carla2vissim_ids.values())
-        for vissim_actor_id in vissim_spawned_actors:
-            vissim_actor = self.vissim.get_actor(vissim_actor_id)
-
-            carla_blueprint = BridgeHelper.get_carla_blueprint(vissim_actor)
-            if carla_blueprint is not None:
+        for vissim_actor_id, vissim_actor in self.vissim.vehicles.items():
+            carla_actor_id = self.vissim2carla_ids.get(vissim_actor_id, None)
+            if carla_actor_id is None:
+                carla_blueprint = BridgeHelper.get_carla_blueprint(vissim_actor)
                 carla_transform = BridgeHelper.get_carla_transform(vissim_actor.get_transform())
                 carla_actor_id = self.carla.spawn_actor(carla_blueprint, carla_transform)
 
                 if carla_actor_id != INVALID_ACTOR_ID:
+                    self.carla.actors.append(carla_actor_id)
+                    self.carla2vissim_ids[carla_actor_id] = vissim_actor_id
                     self.vissim2carla_ids[vissim_actor_id] = carla_actor_id
 
         # Destroying vissim controlled vehicles in carla.
-        for vissim_actor_id in self.vissim.destroyed_vehicles:
-            if vissim_actor_id in self.vissim2carla_ids:
-                self.vissim.destroy_actor(self.vissim2carla_ids.pop(vissim_actor_id))
+        for carla_id in self.carla.actors:
+            vissim_id = self.carla2vissim_ids.get(carla_id, None)
+            if not self.vissim.vehicles.get(vissim_id):
+                print(f'Destroying carla actor {carla_id} for missing vissim vehicle {vissim_id}')
+                self.carla.destroy_actor(carla_id)
+                self.carla2vissim_ids.pop(carla_id)
+                self.vissim2carla_ids.pop(vissim_id)
 
         # Updating vissim controlled vehicles in carla.
-        for vissim_actor_id in self.vissim2carla_ids:
-            carla_actor_id = self.vissim2carla_ids[vissim_actor_id]
+        for carla_actor_id in self.carla.actors:
+            vissim_actor_id = self.carla2vissim_ids.get(carla_actor_id, None)
+            if vissim_actor_id is not None:
+                vissim_actor = self.vissim.get_actor(vissim_actor_id)
+                carla_actor = self.carla.get_actor(carla_actor_id)
 
-            vissim_actor = self.vissim.get_actor(vissim_actor_id)
-            carla_actor = self.carla.get_actor(carla_actor_id)
-
-            carla_transform = BridgeHelper.get_carla_transform(vissim_actor.get_transform(),
+                carla_transform = BridgeHelper.get_carla_transform(vissim_actor.get_transform(),
                                                                carla_actor.bounding_box.extent)
-            carla_velocity = BridgeHelper.get_carla_velocity(vissim_actor.get_velocity())
-            self.carla.synchronize_vehicle(carla_actor_id, carla_transform, carla_velocity)
+                carla_velocity = BridgeHelper.get_carla_velocity(vissim_actor.get_velocity())
+                self.carla.synchronize_vehicle(carla_actor_id, carla_transform, carla_velocity)
 
         #for key in self.vissim.lights_state:
             #value = self.vissim.lights_state[key]
             #actor = self.carla.world.get_actor(int(key))
             #actor.set_state(value)
         
-        # -------------------
-        # carla-->vissim sync
-        # -------------------
-        self.carla.world.tick()
-
-        # Spawning carla controlled vehicles in vissim. This also takes into account carla vehicles
-        # that could not be spawned in vissim in previous time steps.
-        carla_spawned_actors = self.carla.spawned_actors - set(self.vissim2carla_ids.values())
-        carla_spawned_actors.update(
-            [c_id for c_id, v_id in self.carla2vissim_ids.items() if v_id == INVALID_ACTOR_ID])
-        for carla_actor_id in carla_spawned_actors:
-            carla_actor = self.carla.get_actor(carla_actor_id)
-
-            vissim_transform = BridgeHelper.get_vissim_transform(carla_actor.get_transform())
-            vissim_actor_id = self.vissim.spawn_actor(vissim_transform)
-
-            # Add the vissim_actor_id even if it was not possible to spawn it (INVALID_ACTOR_ID) to
-            # try to spawn it again in next time steps.
-            self.carla2vissim_ids[carla_actor_id] = vissim_actor_id
-
-        # Destroying carla controlled vehicles in vissim.
-        for carla_actor_id in self.carla.destroyed_actors:
-            if carla_actor_id in self.carla2vissim_ids:
-                self.vissim.destroy_actor(self.carla2vissim_ids.pop(carla_actor_id))
-
-        # Updating carla controlled vehicles in vissim.
-        for carla_actor_id in self.carla2vissim_ids:
-            vissim_actor_id = self.carla2vissim_ids[carla_actor_id]
-            if vissim_actor_id != INVALID_ACTOR_ID:
-                carla_actor = self.carla.get_actor(carla_actor_id)
-
-                vissim_transform = BridgeHelper.get_vissim_transform(
-                    carla_actor.get_transform(), carla_actor.bounding_box.extent)
-                vissim_velocity = BridgeHelper.get_vissim_velocity(carla_actor.get_velocity())
-                self.vissim.synchronize_vehicle(vissim_actor_id, vissim_transform, vissim_velocity)
-
     def close(self):
         """
         Cleans synchronization.
@@ -166,7 +131,7 @@ class SimulationSynchronization(object):
         self.carla.world.apply_settings(settings)
 
         # Destroying synchronized actors.
-        for carla_actor_id in self.vissim2carla_ids.values():
+        for carla_actor_id in self.carla2vissim_ids.keys():
             self.carla.destroy_actor(carla_actor_id)
 
         # Closing PTV-Vissim connection.
@@ -207,7 +172,10 @@ def synchronization_loop(args):
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser(description=__doc__)
-    argparser.add_argument('vissim_network', type=str, help='vissim network folder')
+    argparser.add_argument('--vissim-network',
+                           default='examples/Basic4Way',
+                           type=str,
+                           help='vissim network folder')
     argparser.add_argument('--carla-host',
                            metavar='H',
                            default='127.0.0.1',
@@ -225,10 +193,6 @@ if __name__ == '__main__':
                            default=0.05,
                            type=float,
                            help='set fixed delta seconds (default: 0.05s)')
-    argparser.add_argument('--simulator-vehicles',
-                           default=0,
-                           type=int,
-                           help='number of simulator vehicles to be passed to vissim (default: 1)')
     argparser.add_argument('--debug', action='store_true', help='enable debug messages')
     arguments = argparser.parse_args()
 

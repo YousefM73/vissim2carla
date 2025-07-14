@@ -123,15 +123,15 @@ class BridgeHelper(object):
             if candidates:
                 blueprint_id = random.choice(candidates)
             else:
-                logging.error(
-                    'vissim type %s not supported. No vehicle will be spawned in carla', type_id)
-                return None
+                logging.warning(
+                    'vissim type %s unknown. Default vehicle type will be spawned', type_id)
+                return BridgeHelper.blueprint_library[0]
 
             blueprint = BridgeHelper.blueprint_library.filter(blueprint_id)
             if not blueprint:
-                logging.error(
-                    'carla blueprint %s unknown. No vehicle will be spawned', blueprint_id)
-                return None
+                logging.warning(
+                    'carla blueprint %s unknown. Default vehicle type will be spawned', blueprint_id)
+                return BridgeHelper.blueprint_library[0]
             blueprint = blueprint[0]
 
             if blueprint.has_attribute('color'):
@@ -146,6 +146,6 @@ class BridgeHelper(object):
             return blueprint
 
         else:
-            logging.error(
-                'vissim type %s unknown. No vehicle will be spawned in carla', type_id)
-            return None
+            logging.warning(
+                'vissim type %s unknown. Default vehicle type will be spawned', type_id)
+            return BridgeHelper.blueprint_library[0]
