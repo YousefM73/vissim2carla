@@ -93,6 +93,11 @@ class CarlaSimulation(object):
             return INVALID_ACTOR_ID
         else:
             if type == 'walker':
+                walker = self.world.get_actor(actor_id)
+                if walker is None:
+                    logging.error('Walker actor %s not found after spawn', actor_id)
+                    return INVALID_ACTOR_ID
+
                 walker_bp = self.world.get_blueprint_library().find('controller.ai.walker')
                 batch = [
                     carla.command.SpawnActor(walker_bp, carla.Transform(), actor_id)
@@ -105,7 +110,15 @@ class CarlaSimulation(object):
                     self.controllers[actor_id] = response.actor_id
                     controller = self.world.get_actor(response.actor_id)
                     if controller:
-                        controller.start()
+                        try:
+                            controller.start()
+                        except RuntimeError as e:
+                            logging.error('Failed to start walker controller %s: %s', response.actor_id, e)
+                            controller.destroy()
+                            walker.destroy()
+                            if actor_id in self.controllers:
+                                del self.controllers[actor_id]
+                            return INVALID_ACTOR_ID
         
         return actor_id
 

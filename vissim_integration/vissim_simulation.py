@@ -198,7 +198,6 @@ class PTVVissimSimulation(object):
             name = signal_head.AttValue('Name')
             state = signal_head.AttValue('SigState')
             self.lights_state[name] = SignalState(state)
-        print(self.lights_state)
 
     def close(self):
         return
