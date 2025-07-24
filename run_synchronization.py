@@ -13,7 +13,10 @@ import time
 
 import glob
 import os
+import re
 import sys
+
+import carla  # pylint: disable=import-error
 
 try:
     sys.path.append(
@@ -84,10 +87,28 @@ class SimulationSynchronization(object):
                 vissim_actor = vissim_list[carla_actor.vissim_id]
                 carla_actor.synchronize(vissim_actor)
 
-        #for key in self.vissim.lights_state:
-            #value = self.vissim.lights_state[key]
-            #actor = self.carla.world.get_actor(int(key))
-            #actor.set_state(value)
+        for name, state in self.vissim.lights_state.items():
+            if name is b'':
+                continue
+
+            pattern = r'X=([+-]?\d*\.?\d+),Y=([+-]?\d*\.?\d+),Z=([+-]?\d*\.?\d+)'
+            match = re.search(pattern, name)
+            location = None
+
+            if match:
+                x = float(match.group(1))
+                y = float(match.group(2))
+                z = float(match.group(3))
+                    
+                location = carla.Location(x, y, z)
+
+            if location is None:
+                continue
+
+            for actor in self.carla.world.get_actors().filter('traffic.*'):
+                transform = actor.get_transform()
+                if (transform.location*100).distance(location) < 1:
+                        actor.set_state(state)
         
     def close(self):
         settings = self.carla.world.get_settings()

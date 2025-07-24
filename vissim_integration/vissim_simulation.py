@@ -95,6 +95,7 @@ class VissimPedestrian(object):
         self.rotation = carla.Rotation(math.degrees(rotation[0]), math.degrees(rotation[1]),
                              math.degrees(rotation[2]))
         self._speed = speed
+
     def get_velocity(self):
         return carla.Vector3D(self._speed * self.move_direction[0],
                                self._speed * self.move_direction[1],
@@ -141,6 +142,8 @@ class PTVVissimSimulation(object):
 
         self.vehicles = {}
         self.pedestrians = {}
+
+        self.lights_state = {}
 
     def get_actor(self, actor_id):
         return self.vehicles[actor_id] if actor_id in self.vehicles else self.pedestrians[actor_id] if actor_id in self.pedestrians else None
@@ -191,13 +194,11 @@ class PTVVissimSimulation(object):
 
         self.pedestrians = pedestrians
 
-        for signal_controller in self.proxy.Net.SignalControllers:
-            for signal_group in signal_controller.SGs:
-                state = signal_group.AttValue('SigState')
-                name = signal_group.AttValue('Name')
-                for carla_light in name.split(','):
-                    return
-                    #self.lights_state[carla_light] = SignalState(state)
+        for signal_head in self.proxy.Net.SignalHeads:
+            name = signal_head.AttValue('Name')
+            state = signal_head.AttValue('SigState')
+            self.lights_state[name] = SignalState(state)
+        print(self.lights_state)
 
     def close(self):
         return
