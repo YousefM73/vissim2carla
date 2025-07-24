@@ -12,7 +12,7 @@
 # ==================================================================================================
 
 INVALID_ACTOR_ID = -1
-CARLA_SPAWN_OFFSET_Z = 25.0  # meters
+CARLA_SPAWN_OFFSET_Z = 5.0  # meters
 
 # Maximum distance of a Vissim veh/ped from a simulator veh/ped to be seen by the simulator (<=0
 # means unlimited radius).

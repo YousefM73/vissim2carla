@@ -5,24 +5,11 @@
 #
 # This work is licensed under the terms of the MIT license.
 # For a copy, see <https://opensource.org/licenses/MIT>.
-"""
-Script to co-simulate CARLA and PTV-Vissim.
-"""
-
-# ==================================================================================================
-# -- imports ---------------------------------------------------------------------------------------
-# ==================================================================================================
 
 import argparse
 import json
 import logging
 import time
-
-import carla  # pylint: disable=import-error
-
-# ==================================================================================================
-# -- find carla module -----------------------------------------------------------------------------
-# ==================================================================================================
 
 import glob
 import os
@@ -36,84 +23,66 @@ try:
 except IndexError:
     pass
 
-# ==================================================================================================
-# -- vissim integration imports --------------------------------------------------------------------
-# ==================================================================================================
-
 from vissim_integration.bridge_helper import BridgeHelper
-from vissim_integration.carla_simulation import CarlaSimulation
+from vissim_integration.carla_simulation import CarlaSimulation, CarlaActor
 from vissim_integration.vissim_simulation import PTVVissimSimulation
 from vissim_integration.constants import INVALID_ACTOR_ID
 
-# ==================================================================================================
-# -- synchronization_loop --------------------------------------------------------------------------
-# ==================================================================================================
-
 class SimulationSynchronization(object):
-    """
-    SimulationSynchronization class is responsible for the synchronization of ptv-vissim and carla
-    simulations.
-    """
     def __init__(self, vissim_simulation, carla_simulation, args):
         self.args = args
 
         self.vissim = vissim_simulation
         self.carla = carla_simulation
 
-        self.carla2vissim_ids = {}  # Contains only actors controlled by carla.
-        self.vissim2carla_ids = {}  # Contains only actors controlled by vissim.
-
         BridgeHelper.blueprint_library = self.carla.world.get_blueprint_library()
         dir_path = os.path.dirname(os.path.realpath(__file__))
         with open(os.path.join(dir_path, 'data', 'vtypes.json')) as f:
             BridgeHelper.vtypes = json.load(f)
 
-        # Configuring carla simulation in sync mode.
         settings = self.carla.world.get_settings()
         settings.synchronous_mode = True
         settings.fixed_delta_seconds = args.step_length
         self.carla.world.apply_settings(settings)
         
     def tick(self):
-        # -------------------
-        # vissim-->carla sync
-        # -------------------
         self.vissim.tick()
         self.carla.world.tick()
 
-        # Spawning vissim controlled vehicles in carla.
+        # Spawn vehicles.
         for vissim_actor_id, vissim_actor in self.vissim.vehicles.items():
-            carla_actor_id = self.vissim2carla_ids.get(vissim_actor_id, None)
-            if carla_actor_id is None:
-                carla_blueprint = BridgeHelper.get_carla_blueprint(vissim_actor)
-                carla_transform = BridgeHelper.get_carla_transform(vissim_actor.get_transform())
-                carla_actor_id = self.carla.spawn_actor(carla_blueprint, carla_transform)
+            if self.carla.vehicle_ids.get(vissim_actor_id, None) is not None:
+                continue
+            
+            print(f'Spawning carla actor for vissim vehicle {vissim_actor_id}')
+            carla_actor = CarlaActor(self.carla, "vehicle", vissim_actor, vissim_actor_id)
+            if carla_actor.carla_id != INVALID_ACTOR_ID:
+                self.carla.actors[carla_actor.carla_id] = carla_actor
 
-                if carla_actor_id != INVALID_ACTOR_ID:
-                    self.carla.actors.append(carla_actor_id)
-                    self.carla2vissim_ids[carla_actor_id] = vissim_actor_id
-                    self.vissim2carla_ids[vissim_actor_id] = carla_actor_id
+        # Spawn pedestrians.
+        for vissim_actor_id, vissim_actor in self.vissim.pedestrians.items():
+            if self.carla.walker_ids.get(vissim_actor_id, None) is not None:
+                continue
+            
+            print(f'Spawning carla actor for vissim pedestrian {vissim_actor_id}')
+            carla_actor = CarlaActor(self.carla, "walker", vissim_actor, vissim_actor_id)
+            if carla_actor.carla_id != INVALID_ACTOR_ID:
+                self.carla.actors[carla_actor.carla_id] = carla_actor
 
-        # Destroying vissim controlled vehicles in carla.
-        for carla_id in self.carla.actors:
-            vissim_id = self.carla2vissim_ids.get(carla_id, None)
-            if not self.vissim.vehicles.get(vissim_id):
-                print(f'Destroying carla actor {carla_id} for missing vissim vehicle {vissim_id}')
-                self.carla.destroy_actor(carla_id)
-                self.carla2vissim_ids.pop(carla_id)
-                self.vissim2carla_ids.pop(vissim_id)
+        # Synchronize actors.
+        for carla_id, carla_actor in list(self.carla.actors.items()):
+            if getattr(self.carla, carla_actor.type + '_ids').get(carla_actor.vissim_id, None) is None:
+                continue
 
-        # Updating vissim controlled vehicles in carla.
-        for carla_actor_id in self.carla.actors:
-            vissim_actor_id = self.carla2vissim_ids.get(carla_actor_id, None)
-            if vissim_actor_id is not None:
-                vissim_actor = self.vissim.get_actor(vissim_actor_id)
-                carla_actor = self.carla.get_actor(carla_actor_id)
+            list_name = "vehicles" if carla_actor.type == "vehicle" else "pedestrians"
+            vissim_list = getattr(self.vissim, list_name)
 
-                carla_transform = BridgeHelper.get_carla_transform(vissim_actor.get_transform(),
-                                                               carla_actor.bounding_box.extent)
-                carla_velocity = BridgeHelper.get_carla_velocity(vissim_actor.get_velocity())
-                self.carla.synchronize_vehicle(carla_actor_id, carla_transform, carla_velocity)
+            if vissim_list.get(carla_actor.vissim_id, None) is None:
+                print(f'Destroying carla actor {carla_id} for missing vissim actor {carla_actor.vissim_id}')
+                carla_actor.destroy()
+            else:
+                vissim_actor = vissim_list[carla_actor.vissim_id]
+                carla_actor.synchronize(vissim_actor)
 
         #for key in self.vissim.lights_state:
             #value = self.vissim.lights_state[key]
@@ -121,27 +90,18 @@ class SimulationSynchronization(object):
             #actor.set_state(value)
         
     def close(self):
-        """
-        Cleans synchronization.
-        """
-        # Configuring carla simulation in async mode.
         settings = self.carla.world.get_settings()
         settings.synchronous_mode = False
         settings.fixed_delta_seconds = None
         self.carla.world.apply_settings(settings)
 
-        # Destroying synchronized actors.
-        for carla_actor_id in self.carla2vissim_ids.keys():
-            self.carla.destroy_actor(carla_actor_id)
+        for carla_actor in list(self.carla.actors.values()):
+            carla_actor.destroy()
 
-        # Closing PTV-Vissim connection.
         self.vissim.close()
 
 
 def synchronization_loop(args):
-    """
-    Entry point for vissim-carla co-simulation.
-    """
     carla_simulation = CarlaSimulation(args)
     vissim_simulation = PTVVissimSimulation(args)
 
@@ -166,9 +126,6 @@ def synchronization_loop(args):
         synchronization.close()
 
 
-# ==================================================================================================
-# -- main ------------------------------------------------------------------------------------------
-# ==================================================================================================
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser(description=__doc__)

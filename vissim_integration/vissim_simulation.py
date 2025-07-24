@@ -26,54 +26,6 @@ from . import constants
 # -- vissim definitions ----------------------------------------------------------------------------
 # ==================================================================================================
 
-
-class Simulator_Veh_Data(Structure):
-    """
-    Structure to hold the data sent to vissim about the status of the simulator vehicles (i.e.,
-    carla vehicles).
-    """
-    _fields_ = [
-        ('Position_X', c_double),  # front center of the vehicle in m
-        ('Position_Y', c_double),  # front center of the vehicle in m
-        ('Position_Z', c_double),  # front center of the vehicle in m
-        ('Orient_Heading', c_double),  # in radians, eastbound = zero, northbound = +Pi/2 */
-        ('Orient_Pitch', c_double),  # in radians, uphill = positive
-        ('Speed', c_double),  # in m/s
-        ('ControlledByVissim', c_bool),  # affects next time step
-        ('RoutingDecisionNo', c_long),  # used once if ControlledByVissim changed from false to true
-        ('RouteNo', c_long)  # used once if ControlledByVissim changed from false to true
-    ]
-
-
-class VISSIM_Veh_Data(Structure):
-    """
-    Structure to hold the data received from vissim about the status of the traffic vehicles (i.e.,
-    vissim vehicles).
-    """
-    _fields_ = [
-        ('VehicleID', c_long),
-        ('VehicleType', c_long),  # vehicle type number from Vissim
-        ('ModelFileName', c_char * constants.NAME_MAX_LENGTH),  # .v3d
-        ('color', c_long),  # RGB
-        ('Position_X', c_double),  # front center of the vehicle in m
-        ('Position_Y', c_double),  # front center of the vehicle in m
-        ('Position_Z', c_double),  # front center of the vehicle in m
-        ('Orient_Heading', c_double),  # in radians, eastbound = zero, northbound = +Pi/2 */
-        ('Orient_Pitch', c_double),  # in radians, uphill = positive
-        ('Speed', c_double),  # in m/s
-        ('LeadingVehicleID', c_long),  # relevant vehicle in front
-        ('TrailingVehicleID', c_long),  # next vehicle back on the same lane
-        ('LinkID', c_long),  # Vissim link attribute “Number”
-        ('LinkName', c_char * constants.NAME_MAX_LENGTH),  # empty if “Name” not set in Vissim
-        ('LinkCoordinate', c_double),  # in m
-        ('LaneIndex', c_int),  # 0 = rightmost
-        ('TurningIndicator', c_int),  # 1 = left, 0 = none, -1 = right
-        ('PreviousIndex', c_long),  # for interpolation: index in the array in the previous Vissim time step, < 0 = new in the visibility area
-        ('NumUDAs', c_long),  # the number of UDA values in the following array
-        ('UDA', c_double * constants.MAX_UDA)  # the first MAX_UDA user-defined numeric vehicle attributes
-    ]
-
-
 class VissimLightState(enum.Enum):
     """
     VissimLightState contains the different vissim indicator states.
@@ -125,22 +77,52 @@ class VissimVehicle(object):
         self._lights_state = lights_state
 
     def get_velocity(self):
-        """
-        Returns the vehicle's velocity.
-        """
         return self._velocity
 
     def get_transform(self):
-        """
-        Returns carla transform.
-        """
         return self._transform
 
+class VissimPedestrian(object):
+    """
+    VissimPedestrian holds the data relative to traffic pedestrians in vissim.
+    """
+    def __init__(self, pedestrian_id, type_id, position, rotation, speed, move_direction):
+        self.id = pedestrian_id
+        self.type = type_id
+        self.move_direction = move_direction
+        
+        self.position = carla.Location(position[0], position[1], position[2])
+        self.rotation = carla.Rotation(math.degrees(rotation[0]), math.degrees(rotation[1]),
+                             math.degrees(rotation[2]))
+        self._speed = speed
+    def get_velocity(self):
+        return carla.Vector3D(self._speed * self.move_direction[0],
+                               self._speed * self.move_direction[1],
+                               self._speed * self.move_direction[2])
+
+    def get_transform(self):
+        return carla.Transform(self.position, self.rotation)
 
 # ==================================================================================================
 # -- vissim simulation -----------------------------------------------------------------------------
 # ==================================================================================================
 
+def calculate_pitch(object):
+    front_x = object.AttValue('CoordFrontX')
+    front_y = object.AttValue('CoordFrontY')
+    front_z = object.AttValue('CoordFrontZ')
+    rear_x = object.AttValue('CoordRearX')
+    rear_y = object.AttValue('CoordRearY')
+    rear_z = object.AttValue('CoordRearZ')
+            
+    horizontal_distance = math.sqrt((front_x - rear_x)**2 + (front_y - rear_y)**2)
+    height_difference = front_z - rear_z
+    if horizontal_distance > 0:
+        pitch = math.atan2(height_difference, horizontal_distance)
+    else:
+        pitch = 0.0
+    
+    return pitch
 
 class PTVVissimSimulation(object):
     def __init__(self, args):
@@ -158,9 +140,10 @@ class PTVVissimSimulation(object):
         self.proxy.LoadNet(network_file, False)
 
         self.vehicles = {}
+        self.pedestrians = {}
 
     def get_actor(self, actor_id):
-        return self.vehicles[actor_id]
+        return self.vehicles[actor_id] if actor_id in self.vehicles else self.pedestrians[actor_id] if actor_id in self.pedestrians else None
 
     def tick(self):
         self.proxy.Simulation.RunSingleStep()
@@ -169,20 +152,11 @@ class PTVVissimSimulation(object):
         for veh in self.proxy.Net.Vehicles:
             veh_id = veh.AttValue('No')
             yaw = math.radians(veh.AttValue('OrientationAngle'))
+            pitch = calculate_pitch(veh)
 
             front_x = veh.AttValue('CoordFrontX')
             front_y = veh.AttValue('CoordFrontY')
             front_z = veh.AttValue('CoordFrontZ')
-            rear_x = veh.AttValue('CoordRearX')
-            rear_y = veh.AttValue('CoordRearY')
-            rear_z = veh.AttValue('CoordRearZ')
-            
-            horizontal_distance = math.sqrt((front_x - rear_x)**2 + (front_y - rear_y)**2)
-            height_difference = front_z - rear_z
-            if horizontal_distance > 0:
-                pitch = math.atan2(height_difference, horizontal_distance)
-            else:
-                pitch = 0.0
 
             vehicles[veh_id] = VissimVehicle(
                 veh_id, veh.AttValue('VehType'), veh.AttValue('VehType'),
@@ -193,6 +167,30 @@ class PTVVissimSimulation(object):
 
         self.vehicles = vehicles
         
+        pedestrians = {}
+        for ped in self.proxy.Net.Pedestrians:
+            ped_id = ped.AttValue('No')
+            yaw = math.radians(ped.AttValue('OrientationAngle'))
+
+            front_x = ped.AttValue('CoordFrontX')
+            front_y = ped.AttValue('CoordFrontY')
+            front_z = ped.AttValue('CoordFrontZ')
+            center_x = ped.AttValue('CoordCentX')
+            center_y = ped.AttValue('CoordCentY')
+            center_z = ped.AttValue('CoordCentZ')
+
+            move_direction_x = front_x - center_x
+            move_direction_y = front_y - center_y
+            move_direction_z = front_z - center_z
+
+            pedestrians[ped_id] = VissimPedestrian(
+                ped_id, ped.AttValue('PedType'),
+                [center_x, center_y, center_z],
+                [0, yaw, 0], ped.AttValue('Speed'),
+                [move_direction_x, move_direction_y, move_direction_z])
+
+        self.pedestrians = pedestrians
+
         for signal_controller in self.proxy.Net.SignalControllers:
             for signal_group in signal_controller.SGs:
                 state = signal_group.AttValue('SigState')
