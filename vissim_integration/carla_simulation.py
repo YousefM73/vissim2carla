@@ -60,6 +60,8 @@ class CarlaSimulation(object):
         self.actors = {}
         self.controllers = {}
 
+        self.walker_spawn_time = {}
+
     def get_actor(self, actor_id):
         return self.world.get_actor(actor_id)
 
@@ -80,6 +82,9 @@ class CarlaSimulation(object):
         if type == 'walker':
             setSimulatePhysics = True
 
+        world_snapshot = self.world.get_snapshot()
+        timestamp = world_snapshot.timestamp
+
         batch = [
             carla.command.SpawnActor(blueprint, transform).then(
                 carla.command.SetSimulatePhysics(carla.command.FutureActor, setSimulatePhysics))
@@ -87,6 +92,7 @@ class CarlaSimulation(object):
 
         response = self.client.apply_batch_sync(batch, False)[0]
         actor_id = response.actor_id
+        self.walker_spawn_time[actor_id] = timestamp
 
         if response.error:
             logging.error('Spawn carla actor failed. %s', response.error)
@@ -94,6 +100,7 @@ class CarlaSimulation(object):
         else:
             if type == 'walker':
                 walker = self.world.get_actor(actor_id)
+
                 if walker is None:
                     logging.error('Walker actor %s not found after spawn', actor_id)
                     return INVALID_ACTOR_ID
@@ -145,6 +152,7 @@ class CarlaSimulation(object):
             return False
 
         vehicle.set_transform(transform)
+        
         if velocity is not None:
             vehicle.set_target_velocity(velocity)
 
@@ -173,14 +181,26 @@ class CarlaSimulation(object):
         direction = carla.Vector3D(0, 0, -1)
 
         intersection = self.world.project_point(start, direction, 10)
+        current_transform = pedestrian.get_transform()
+
+        world_snapshot = self.world.get_snapshot()
+        timestamp = world_snapshot.timestamp
 
         if intersection is not None:
-            new_transform = carla.Transform(intersection.location + carla.Location(0, 0, pedestrian.bounding_box.extent.z), transform.rotation)
+            elevation_difference = intersection.location.z - (current_transform.location.z - pedestrian.bounding_box.extent.z)
+            walker_spawn_time = self.walker_spawn_time.get(pedestrian_id, 0)
+            time_since_spawn = timestamp.elapsed_seconds - walker_spawn_time.elapsed_seconds
+            if (abs(elevation_difference) < 0.3 or time_since_spawn < 1): # Prevents drastic changes in pedestrian elevation due to obstacles.
+                new_transform = carla.Transform(intersection.location + carla.Location(0, 0, pedestrian.bounding_box.extent.z), transform.rotation)
+            else:
+                new_location = carla.Location(intersection.location.x, intersection.location.y, current_transform.location.z)
+                new_transform = carla.Transform(new_location, transform.rotation)
 
         pedestrian.set_transform(new_transform)
         if controller_id is not None:
             controller = self.world.get_actor(controller_id)
             if controller is not None:
+                pedestrian.apply_control(control)
                 #controller.go_to_location = transform.location
                 return
             else:

@@ -140,6 +140,22 @@ class PTVVissimSimulation(object):
 
         self.proxy.LoadNet(network_file, False)
 
+        # Load map offset from map_offset.txt if it exists
+        self.map_offset_x = 0.0
+        self.map_offset_y = 0.0
+        self.map_offset_z = 0.0
+        
+        map_offset_path = os.path.join(network_path, 'map_offset.txt')
+        if os.path.exists(map_offset_path):
+            with open(map_offset_path, 'r') as f:
+                    offset_line = f.readline().strip()
+                    offset_values = offset_line.split(',')
+                    if len(offset_values) >= 3:
+                        self.map_offset_x = float(offset_values[0].strip())
+                        self.map_offset_y = float(offset_values[1].strip())
+                        self.map_offset_z = float(offset_values[2].strip())
+        print(self.map_offset_x, self.map_offset_y, self.map_offset_z)
+
         self.vehicles = {}
         self.pedestrians = {}
 
@@ -157,9 +173,9 @@ class PTVVissimSimulation(object):
             yaw = math.radians(veh.AttValue('OrientationAngle'))
             pitch = calculate_pitch(veh)
 
-            front_x = veh.AttValue('CoordFrontX')
-            front_y = veh.AttValue('CoordFrontY')
-            front_z = veh.AttValue('CoordFrontZ')
+            front_x = veh.AttValue('CoordFrontX') + self.map_offset_x
+            front_y = veh.AttValue('CoordFrontY') + self.map_offset_y
+            front_z = veh.AttValue('CoordFrontZ') + self.map_offset_z
 
             vehicles[veh_id] = VissimVehicle(
                 veh_id, veh.AttValue('VehType'), veh.AttValue('VehType'),
@@ -175,12 +191,12 @@ class PTVVissimSimulation(object):
             ped_id = ped.AttValue('No')
             yaw = math.radians(ped.AttValue('OrientationAngle'))
 
-            front_x = ped.AttValue('CoordFrontX')
-            front_y = ped.AttValue('CoordFrontY')
-            front_z = ped.AttValue('CoordFrontZ')
-            center_x = ped.AttValue('CoordCentX')
-            center_y = ped.AttValue('CoordCentY')
-            center_z = ped.AttValue('CoordCentZ')
+            front_x = ped.AttValue('CoordFrontX') + self.map_offset_x
+            front_y = ped.AttValue('CoordFrontY') + self.map_offset_y
+            front_z = ped.AttValue('CoordFrontZ') + self.map_offset_z
+            center_x = ped.AttValue('CoordCentX') + self.map_offset_x
+            center_y = ped.AttValue('CoordCentY') + self.map_offset_y
+            center_z = ped.AttValue('CoordCentZ') + self.map_offset_z
 
             move_direction_x = front_x - center_x
             move_direction_y = front_y - center_y

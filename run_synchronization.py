@@ -151,7 +151,7 @@ def synchronization_loop(args):
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser(description=__doc__)
     argparser.add_argument('--vissim-network',
-                           default='examples/Basic4Way',
+                           default='examples/NewRewarkNoGeo',
                            type=str,
                            help='vissim network folder')
     argparser.add_argument('--carla-host',
