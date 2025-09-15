@@ -1,0 +1,209 @@
+{
+
+    "host": "0.0.0.0",
+    "port": 8000,
+
+    "carla": {
+        "host": "127.0.0.1",
+        "port": 2000,
+        "timeout": 10.0
+    },
+
+    "sensors": [
+        {
+            "type": "sensor.camera.rgb",
+            "name": "Warren-Summit West",
+            "attributes": {
+                "image_size_x": 400,
+                "image_size_y": 300,
+                "fov": 61.9
+            },
+            "transform": {
+                "position": [80.8, 117.9, 7],
+                "rotation": [-7.6, -135.3, 0]
+            }
+        },
+        {
+            "type": "sensor.camera.rgb",
+            "name": "Warren-Summit South",
+            "attributes": {
+                "image_size_x": 400,
+                "image_size_y": 300,
+                "fov": 61.9
+            },
+            "transform": {
+                "position": [86.3, 103.2, 7],
+                "rotation": [-8, -226.5, 0]
+            }
+        },
+        {
+            "type": "sensor.camera.rgb",
+            "name": "Warren-Summit East",
+            "attributes": {
+                "image_size_x": 400,
+                "image_size_y": 300,
+                "fov": 61.9
+            },
+            "transform": {
+                "position": [72.4, 98.1, 7],
+                "rotation": [-7, -1395, 720]
+            }
+        },
+        {
+            "type": "sensor.camera.rgb",
+            "name": "Warren-Summit North",
+            "attributes": {
+                "image_size_x": 400,
+                "image_size_y": 300,
+                "fov": 61.9
+            },
+            "transform": {
+                "position": [65.17, 110.99, 7],
+                "rotation": [-7, -1481, 720]
+            }
+        },
+        {
+            "type": "sensor.camera.rgb",
+            "name": "Warren-Summit Fullview",
+            "attributes": {
+                "image_size_x": 500,
+                "image_size_y": 200,
+                "fov": 150
+            },
+            "transform": {
+                "position": [72.4, 98.1, 7.1],
+                "rotation": [-24, -1350, 720]
+            }
+        },
+        {
+            "type": "sensor.camera.rgb",
+            "name": "MLK-Warren West",
+            "attributes": {
+                "image_size_x": 400,
+                "image_size_y": 300,
+                "fov": 61.9
+            },
+            "transform": {
+                "position": [186.62863281, 162.98990234, 7],
+                "rotation": [-6.197429, -1575.055176, 719.997437]
+            }
+        },
+        {
+            "type": "sensor.camera.rgb",
+            "name": "MLK-Warren South",
+            "attributes": {
+                "image_size_x": 400,
+                "image_size_y": 300,
+                "fov": 61.9
+            },
+            "transform": {
+                "position": [194.94666016, 147.41367188, 7],
+                "rotation": [-4.397778, -1662.654297, 719.997437]
+            }
+        },
+        {
+            "type": "sensor.camera.rgb",
+            "name": "MLK-Warren East",
+            "attributes": {
+                "image_size_x": 400,
+                "image_size_y": 300,
+                "fov": 61.9
+            },
+            "transform": {
+                "position": [177.28236328, 140.15271484, 7],
+                "rotation": [-5.994800, -1755.852295, 719.997437]
+            }
+        },
+        {
+            "type": "sensor.camera.rgb",
+            "name": "MLK-Warren North",
+            "attributes": {
+                "image_size_x": 400,
+                "image_size_y": 300,
+                "fov": 61.9
+            },
+            "transform": {
+                "position": [170.75781250, 156.53706055, 7],
+                "rotation": [-7.199111, -1846.059570, 720.000061]
+            }
+        },
+        {
+            "type": "sensor.camera.rgb",
+            "name": "MLK-Warren Fullview",
+            "attributes": {
+                "image_size_x": 500,
+                "image_size_y": 200,
+                "fov": 150
+            },
+            "transform": {
+                "position": [187.63703125, 144.94842773, 7.86],
+                "rotation": [-22.194016, -1687.271484, 720.000061]
+            }
+        },
+        {
+            "type": "sensor.camera.rgb",
+            "name": "Lock-Warren West",
+            "attributes": {
+                "image_size_x": 400,
+                "image_size_y": 300,
+                "fov": 61.9
+            },
+            "transform": {
+                "position": [-147.81240234, 16.65075562, 7],
+                "rotation": [-3.189826, -1582.447754, 720.000061]
+            }
+        },
+        {
+            "type": "sensor.camera.rgb",
+            "name": "Lock-Warren South",
+            "attributes": {
+                "image_size_x": 400,
+                "image_size_y": 300,
+                "fov": 61.9
+            },
+            "transform": {
+                "position": [-143.14955078, -2.43585938, 7],
+                "rotation": [-4.990733, -1664.442017, 720.000061]
+            }
+        },
+        {
+            "type": "sensor.camera.rgb",
+            "name": "Lock-Warren East",
+            "attributes": {
+                "image_size_x": 400,
+                "image_size_y": 300,
+                "fov": 61.9
+            },
+            "transform": {
+                "position": [-167.07689453, -9.63933411, 7],
+                "rotation": [-0.190938, -1764.032959, 720.000061]
+            }
+        },
+        {
+            "type": "sensor.camera.rgb",
+            "name": "Lock-Warren North",
+            "attributes": {
+                "image_size_x": 400,
+                "image_size_y": 300,
+                "fov": 61.9
+            },
+            "transform": {
+                "position": [-170.24205078, 19.32726807, 7],
+                "rotation": [-2.591397, -1859.427002, 720.000061]
+            }
+        },
+        {
+            "type": "sensor.camera.rgb",
+            "name": "Lock-Warren Fullview",
+            "attributes": {
+                "image_size_x": 500,
+                "image_size_y": 200,
+                "fov": 150
+            },
+            "transform": {
+                "position": [-170.24205078, 19.32726807, 7],
+                "rotation": [-2.591397, -1859.427002, 720.000061]
+            }
+        }
+    ]
+}

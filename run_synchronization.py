@@ -15,6 +15,11 @@ import glob
 import os
 import re
 import sys
+import uuid
+import numpy as np
+import base64
+import paho.mqtt.client as mqttClient
+from tracemalloc import start
 
 import carla  # pylint: disable=import-error
 
@@ -31,6 +36,76 @@ from vissim_integration.carla_simulation import CarlaSimulation, CarlaActor
 from vissim_integration.vissim_simulation import PTVVissimSimulation
 from vissim_integration.constants import INVALID_ACTOR_ID
 
+brokerIP = None  # Broker address
+brokerPort = 1883
+
+if not brokerIP:
+    raise ValueError("Broker IP address is not set. Please set the brokerIP variable.")
+
+global server, config
+global sensors
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+config_path = os.path.join(script_dir, 'sensor_config.json')
+
+with open(config_path, 'r') as f:
+    config = json.load(f)
+
+sensors = {}
+
+class CARLASensor:
+    def __init__(self, configuration, mqtt_client, world):
+        self.configuration = configuration
+        self.mqtt_client = mqtt_client
+        self.id = uuid.uuid4()
+        self.name = configuration.get('name', str(self.id))
+        self.data = None
+
+        blueprint = world.get_blueprint_library().find(configuration['type'])
+        for key, value in configuration['attributes'].items():
+            blueprint.set_attribute(key, str(value))
+
+        position = carla.Location(x=configuration['transform']['position'][0], y=configuration['transform']['position'][1], z=configuration['transform']['position'][2])
+        rotation = carla.Rotation(pitch=configuration['transform']['rotation'][0], yaw=configuration['transform']['rotation'][1], roll=configuration['transform']['rotation'][2])
+        transform = carla.Transform(position, rotation)
+
+        self.sensor = world.spawn_actor(blueprint, transform)
+        self.sensor.listen(self.update)
+        sensors[str(self.id)] = self
+
+    def update(self, output):
+        if self.configuration["type"] == "sensor.camera.rgb":
+            image_array = np.frombuffer(output.raw_data, dtype=np.uint8)
+            image_array = image_array.reshape((output.height, output.width, 4))
+            rgb_array = image_array[:, :, :3]
+            formatted_data = rgb_array.tobytes()
+
+            self.data = {
+                'type': self.configuration['type'],
+                'data': base64.b64encode(formatted_data).decode('utf-8'),
+                'metadata': {
+                    'width': output.width if hasattr(output, 'width') else 0,
+                    'height': output.height if hasattr(output, 'height') else 0,
+                    'timestamp': time.time()
+                }
+            }
+
+        else:
+            self.data = {
+                'type': self.configuration['type'],
+                'data': base64.b64encode(output.raw_data).decode('utf-8'),
+                'metadata': {
+                    'timestamp': time.time()
+                }
+            }
+
+        payload = json.dumps(self.data)
+        self.mqtt_client.publish(f"Stream/{self.name}", payload=payload, qos=0, retain=False)
+
+    def destroy(self):
+        sensors[str(self.id)] = None
+        self.sensor.destroy()
+
 class SimulationSynchronization(object):
     def __init__(self, vissim_simulation, carla_simulation, args):
         self.args = args
@@ -45,13 +120,10 @@ class SimulationSynchronization(object):
 
         settings = self.carla.world.get_settings()
         settings.synchronous_mode = True
-        settings.fixed_delta_seconds = args.step_length
+        settings.fixed_delta_seconds = None
         self.carla.world.apply_settings(settings)
         
     def tick(self):
-        self.vissim.tick()
-        self.carla.world.tick()
-
         # Spawn vehicles.
         for vissim_actor_id, vissim_actor in self.vissim.vehicles.items():
             if self.carla.vehicle_ids.get(vissim_actor_id, None) is not None:
@@ -126,24 +198,39 @@ def synchronization_loop(args):
     carla_simulation = CarlaSimulation(args)
     vissim_simulation = PTVVissimSimulation(args)
 
+    client = mqttClient.Client(mqttClient.CallbackAPIVersion.VERSION1, "Carla_Sensors", clean_session=True)
+    client.connect(brokerIP, brokerPort)
+
+    for sensor_cfg in config['sensors']:
+        try:
+            sensor = CARLASensor(sensor_cfg, client, carla_simulation.world)
+            print(f"Spawned sensor: {str(sensor.name)}")
+        except Exception as e:
+            print(f"Error spawning sensor: {e}")
+
     try:
         synchronization = SimulationSynchronization(vissim_simulation, carla_simulation, args)
-
+        last_carla_tick = time.time()
+        last_vissim_tick = time.time()
         while True:
-            start = time.time()
+            current_tick = time.time()
 
-            synchronization.tick()
+            if current_tick - last_vissim_tick >= (15/60):
+                vissim_simulation.tick()
+                last_vissim_tick = current_tick
 
-            end = time.time()
-            elapsed = end - start
-            if elapsed < args.step_length:
-                time.sleep(args.step_length - elapsed)
+            if current_tick - last_carla_tick >= (30/60):
+                carla_simulation.tick()
+                synchronization.tick()
+                last_carla_tick = current_tick
 
     except KeyboardInterrupt:
         logging.info('Cancelled by user.')
 
     finally:
         logging.info('Cleaning synchronization')
+        for sensor in sensors.values():
+            sensor.sensor.destroy()
         synchronization.close()
 
 
@@ -167,10 +254,6 @@ if __name__ == '__main__':
                            default=2020,
                            type=int,
                            help='ptv-vissim version (default: 2020)')
-    argparser.add_argument('--step-length',
-                           default=0.05,
-                           type=float,
-                           help='set fixed delta seconds (default: 0.05s)')
     argparser.add_argument('--debug', action='store_true', help='enable debug messages')
     arguments = argparser.parse_args()
 

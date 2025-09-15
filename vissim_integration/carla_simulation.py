@@ -59,8 +59,13 @@ class CarlaSimulation(object):
 
         self.actors = {}
         self.controllers = {}
+        self.batch = []
 
         self.walker_spawn_time = {}
+
+    def tick(self):
+        self.client.apply_batch_sync(self.batch, True)
+        self.batch.clear()
 
     def get_actor(self, actor_id):
         return self.world.get_actor(actor_id)
@@ -151,7 +156,7 @@ class CarlaSimulation(object):
         if vehicle is None:
             return False
 
-        vehicle.set_transform(transform)
+        self.batch.append(carla.command.ApplyTransform(vehicle_id, transform))
         
         if velocity is not None:
             vehicle.set_target_velocity(velocity)
@@ -196,7 +201,7 @@ class CarlaSimulation(object):
                 new_location = carla.Location(intersection.location.x, intersection.location.y, current_transform.location.z)
                 new_transform = carla.Transform(new_location, transform.rotation)
 
-        pedestrian.set_transform(new_transform)
+        self.batch.append(carla.command.ApplyTransform(pedestrian_id, new_transform))
         if controller_id is not None:
             controller = self.world.get_actor(controller_id)
             if controller is not None:
@@ -213,6 +218,3 @@ class CarlaSimulation(object):
         #    pedestrian.set_target_velocity(velocity)
 
         return True
-
-    def tick(self):
-        self.world.tick()
