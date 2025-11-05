@@ -139,6 +139,7 @@ class PTVVissimSimulation(object):
                     network_file = os.path.join(root, file)
 
         self.proxy.LoadNet(network_file, False)
+        self.proxy.Simulation.SetAttValue("SimRes", args.refresh_rate)
 
         # Load map offset from map_offset.txt if it exists
         self.map_offset_x = 0.0
@@ -165,8 +166,7 @@ class PTVVissimSimulation(object):
         return self.vehicles[actor_id] if actor_id in self.vehicles else self.pedestrians[actor_id] if actor_id in self.pedestrians else None
 
     def tick(self):
-        for i in range(1, 4):
-            self.proxy.Simulation.RunSingleStep()
+        self.proxy.Simulation.RunSingleStep()
 
         vehicles = {}
         for veh in self.proxy.Net.Vehicles:

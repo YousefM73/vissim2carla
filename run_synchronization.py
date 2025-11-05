@@ -201,6 +201,8 @@ def synchronization_loop(args):
     client = mqttClient.Client(mqttClient.CallbackAPIVersion.VERSION1, "Carla_Sensors", clean_session=True)
     client.connect(brokerIP, brokerPort)
 
+    rate = 1/args.refresh_rate
+
     for sensor_cfg in config['sensors']:
         try:
             sensor = CARLASensor(sensor_cfg, client, carla_simulation.world)
@@ -210,19 +212,15 @@ def synchronization_loop(args):
 
     try:
         synchronization = SimulationSynchronization(vissim_simulation, carla_simulation, args)
-        last_carla_tick = time.time()
-        last_vissim_tick = time.time()
+        last_tick = time.time()
         while True:
             current_tick = time.time()
 
-            if current_tick - last_vissim_tick >= (15/60):
+            if current_tick - last_tick >= rate:
                 vissim_simulation.tick()
-                last_vissim_tick = current_tick
-
-            if current_tick - last_carla_tick >= (30/60):
                 carla_simulation.tick()
                 synchronization.tick()
-                last_carla_tick = current_tick
+                last_tick = current_tick
 
     except KeyboardInterrupt:
         logging.info('Cancelled by user.')
@@ -238,7 +236,7 @@ def synchronization_loop(args):
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser(description=__doc__)
     argparser.add_argument('--vissim-network',
-                           default='examples/NewRewarkNoGeo',
+                           default='examples/NewarkNoGeo',
                            type=str,
                            help='vissim network folder')
     argparser.add_argument('--carla-host',
@@ -254,6 +252,10 @@ if __name__ == '__main__':
                            default=2020,
                            type=int,
                            help='ptv-vissim version (default: 2020)')
+    argparser.add_argument('--refresh-rate',
+                           default=2,
+                           type=int,
+                           help='rate at which CARLA refreshes actor positions (default: 2Hz)')
     argparser.add_argument('--debug', action='store_true', help='enable debug messages')
     arguments = argparser.parse_args()
 
