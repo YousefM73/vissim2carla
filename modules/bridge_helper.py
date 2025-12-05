@@ -116,7 +116,7 @@ class BridgeHelper(object):
         """
         Returns an appropriate blueprint based on the received vissim actor.
         """
-        type_id = str(vissim_actor.type)
+        type_id = str(vissim_actor['type'])
 
         if type_id in BridgeHelper.vtypes:
             candidates = BridgeHelper.vtypes[type_id]

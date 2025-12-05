@@ -1,0 +1,12 @@
+{
+    "carla": {
+        "host": "localhost",
+        "port": 2000,
+        "timeout": 30.0
+    },
+    "mqtt": {
+        "broker": "localhost",
+        "port": 1883,
+        "topic": "carla/sensors"
+    }
+}
