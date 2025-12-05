@@ -118,6 +118,7 @@ class Simulation(object):
         settings.substepping = False
 
         self.carla.world.apply_settings(settings)
+        self.carla.world.set_weather(carla.WeatherParameters.ClearNoon)
         
     def tick(self):
         if os.path.exists(self.vissim):
@@ -170,9 +171,7 @@ class Simulation(object):
                     transform = actor._transform
                     if (transform.location*100).distance(location) < 1:
                             actor.set_state(state)
-        
-        tick_start = time.time()
-
+                            
         # Synchronize actors.
         for carla_id, carla_actor in list(self.carla.actors.items()):
 
@@ -191,9 +190,6 @@ class Simulation(object):
             else:
                 vissim_actor_data = vissim_list[str(carla_actor.vissim_id)]
                 carla_actor.synchronize(vissim_actor_data)
-            
-
-        print("Time to synchronize actors: " + str(time.time() - tick_start))
         
     def close(self):
 
@@ -220,6 +216,8 @@ def main(args):
     client = mqttClient.Client(mqttClient.CallbackAPIVersion.VERSION1, "CARLA_Sensors", clean_session=True)
     client.connect(config["mqtt"]["broker"], config["mqtt"]["port"])
 
+    synchronization = None
+
     if not arguments.no_sensors:
         for sensor_cfg in sensor_config:
             try:
@@ -242,6 +240,12 @@ def main(args):
 
     finally:
         logging.info('Cleaning synchronization')
+        settings = carla_simulation.world.get_settings()
+        settings.synchronous_mode = False
+        carla_simulation.world.apply_settings(settings)
+
+        synchronization.close()
+
         for sensor in sensors.values():
             sensor.sensor.destroy()
 
